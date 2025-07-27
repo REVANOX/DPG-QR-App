@@ -1,0 +1,15 @@
+<resources>
+    <string name="app_name" translatable="false">DPG-QR</string>
+    <string name="title_activity_main" translatable="false">DPG-QR</string> <!-- If you have this -->
+
+    <!-- About Screen Strings -->
+    <string name="about_screen_title" translatable="false">About DPG-QR</string>
+    <string name="developer_name_label" translatable="false">Developer:</string>
+    <string name="developer_name_value" translatable="false">Your Developer Revan Bilal/ DPG</string>
+    <string name="app_version_label" translatable="false">Version:</string>
+    <!-- We'll get the version name programmatically -->
+
+
+    <string name="support_website_label" translatable="false">Website:</string>
+    <string name="support_website_value" translatable="false">https://dpg-gruppe.de/</string>
+</resources>

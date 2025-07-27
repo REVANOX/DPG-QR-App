@@ -1,0 +1,70 @@
+plugins {
+    alias(libs.plugins.android.application)
+    alias(libs.plugins.kotlin.android)
+    alias(libs.plugins.kotlin.compose)
+}
+
+android {
+    namespace 'de.dpg.qr'
+    compileSdk 36
+
+    defaultConfig {
+        applicationId 'de.dpg.qr'
+        minSdk 21
+        targetSdk 36
+        versionCode 1
+        versionName "1.0"
+
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        signingConfig signingConfigs.debug
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_11
+        targetCompatibility JavaVersion.VERSION_11
+    }
+    kotlinOptions {
+        jvmTarget = '11'
+    }
+    buildFeatures {
+        compose true
+        viewBinding false
+    }
+    dependenciesInfo {
+        includeInApk true
+        includeInBundle true
+    }
+}
+
+dependencies {
+
+    implementation libs.androidx.core.ktx // Versionen können variieren, verwende aktuelle
+    implementation libs.androidx.lifecycle.runtime.ktx
+    implementation libs.androidx.activity.compose
+
+    // Jetpack Compose BOM (Bill of Materials) - verwaltet Compose-Bibliotheksversionen
+    // Überprüfe die neueste Version der BOM: https://developer.android.com/jetpack/compose/bom
+    implementation platform(libs.androidx.compose.bom.v20250700) // Ersetze mit der neuesten BOM-Version
+    implementation libs.ui
+    implementation libs.ui.graphics
+    implementation libs.ui.tooling.preview // Für @Preview
+    implementation libs.material3 // Für Material Design 3 Komponenten
+
+    // ZXing für QR-Code-Generierung
+    // Überprüfe die neueste Version von ZXing Core: https://mvnrepository.com/artifact/com.google.zxing/core
+    implementation libs.core // Ersetze mit der neuesten Version
+
+    testImplementation libs.junit
+    androidTestImplementation libs.androidx.junit.v115
+    androidTestImplementation libs.androidx.espresso.core
+    androidTestImplementation platform(libs.androidx.compose.bom.v20250700) // Dieselbe BOM-Version
+    androidTestImplementation libs.ui.test.junit4
+    debugImplementation libs.ui.tooling // Für Compose Tools im Emulator/Gerät
+    debugImplementation libs.ui.test.manifest
+}
