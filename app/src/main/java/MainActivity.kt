@@ -1,43 +1,135 @@
 package de.dpg.qr // Ersetze dies mit deinem tatsächlichen Package-Namen
 
+import android.annotation.SuppressLint // Import for SuppressLint
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import com.example.qr.ui.theme.QrTheme // Stelle sicher, dass der Theme-Name korrekt ist
-import com.google.zxing.BarcodeFormat
-import com.google.zxing.EncodeHintType
-import com.google.zxing.qrcode.QRCodeWriter
-import com.google.zxing.common.BitMatrix
-import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
-import java.util.EnumMap
 import androidx.core.graphics.createBitmap
 import androidx.core.graphics.set
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.qr.ui.theme.QrTheme // Make sure this theme name is correct
+import com.google.zxing.BarcodeFormat
+import com.google.zxing.EncodeHintType
+import com.google.zxing.common.BitMatrix
+import com.google.zxing.qrcode.QRCodeWriter
+import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
+import java.util.*
+
+// --- QrViewModel Class ---
+class QrViewModel : ViewModel() {
+
+    private val _inputText = mutableStateOf("")
+    val inputText: State<String> = _inputText
+
+    private val _qrBitmap = mutableStateOf<Bitmap?>(null)
+    val qrBitmap: State<Bitmap?> = _qrBitmap
+
+    private val _errorMessage = mutableStateOf<String?>(null)
+    val errorMessage: State<String?> = _errorMessage
+
+    private val _sessionRecentTexts = mutableStateOf<List<String>>(emptyList())
+    val sessionRecentTexts: State<List<String>> = _sessionRecentTexts
+
+    private val maxSessionRecentTexts = 5
+
+    fun onInputTextChanged(newText: String) {
+        _inputText.value = newText
+        if (newText.isNotBlank()) {
+            generateQrCodeAndUpdateState() // Live QR generation and update recents
+        } else {
+            _qrBitmap.value = null
+            _errorMessage.value = null
+        }
+    }
+
+    private fun generateQrCodeAndUpdateState() {
+        val textToEncode = _inputText.value
+        if (textToEncode.isNotBlank()) {
+            try {
+                _qrBitmap.value = generateQrBitmapInternal(textToEncode)
+                _errorMessage.value = null
+                addTextToRecents(textToEncode) // Add the current text (possibly appended) to recents
+            } catch (e: Exception) {
+                e.printStackTrace()
+                _errorMessage.value = "Fehler beim Generieren."
+                _qrBitmap.value = null
+            }
+        }
+    }
+
+    private fun addTextToRecents(text: String) {
+        if (text.isBlank()) return
+        val updatedRecent = _sessionRecentTexts.value.toMutableList()
+        updatedRecent.remove(text)
+        updatedRecent.add(0, text)
+        _sessionRecentTexts.value = updatedRecent.take(maxSessionRecentTexts)
+    }
+
+    fun onRecentTextSelected(selectedRecentText: String) {
+        val currentTextInField = _inputText.value
+        val newAppendedText = if (currentTextInField.isBlank()) {
+            selectedRecentText
+        } else {
+            "$currentTextInField $selectedRecentText" // Append with a space
+        }
+        _inputText.value = newAppendedText
+
+        if (_inputText.value.isNotBlank()) {
+            generateQrCodeAndUpdateState() // Regenerate QR for the new appended text and update recents
+        } else {
+            _qrBitmap.value = null
+            _errorMessage.value = null
+        }
+    }
+
+    fun clearInputText() {
+        _inputText.value = ""
+        _qrBitmap.value = null
+        _errorMessage.value = null
+    }
+
+    private fun generateQrBitmapInternal(text: String, width: Int = 512, height: Int = 512): Bitmap? {
+        val qrCodeWriter = QRCodeWriter()
+        val hints = EnumMap<EncodeHintType, Any>(EncodeHintType::class.java)
+        hints[EncodeHintType.CHARACTER_SET] = "UTF-8"
+        hints[EncodeHintType.ERROR_CORRECTION] = ErrorCorrectionLevel.L
+        val bitMatrix: BitMatrix = qrCodeWriter.encode(text, BarcodeFormat.QR_CODE, width, height, hints)
+        val bmp = createBitmap(bitMatrix.width, bitMatrix.height, Bitmap.Config.RGB_565)
+        for (x in 0 until bitMatrix.width) {
+            for (y in 0 until bitMatrix.height) {
+                bmp[x, y] = if (bitMatrix[x, y]) Color.BLACK else Color.WHITE
+            }
+        }
+        return bmp
+    }
+}
+// --- End of QrViewModel ---
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            // Der Name des Themes wird aus deinem Projekt generiert (z.B. AppNameTheme)
-            // Du findest ihn in der Datei ui/theme/Theme.kt
-            QrTheme { // Passe dies an deinen Theme-Namen an
+            QrTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    QrCodeGeneratorScreen()
+                    QrCodeGeneratorScreen(qrViewModel = viewModel())
                 }
             }
         }
@@ -45,30 +137,11 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun QrCodeGeneratorScreen(modifier: Modifier = Modifier) {
-    var textToEncode by remember { mutableStateOf("") }
-    var qrBitmap by remember { mutableStateOf<Bitmap?>(null) }
-    var errorMessage by remember { mutableStateOf<String?>(null) } // Behalten für Fehler
-
-    // LaunchedEffect, um QR-Code bei Textänderung zu generieren
-    LaunchedEffect(textToEncode) {
-        if (textToEncode.isNotBlank()) {
-            try {
-                // Hier könnten wir einen Debounce-Mechanismus einbauen,
-                // z.B. kotlinx.coroutines.flow.debounce
-                // Fürs Erste generieren wir direkt:
-                qrBitmap = generateQrCode(textToEncode)
-                errorMessage = null
-            } catch (e: Exception) {
-                e.printStackTrace()
-                errorMessage = "Fehler beim Generieren." // Kürzere Fehlermeldung
-                qrBitmap = null
-            }
-        } else {
-            qrBitmap = null // Textfeld ist leer, also keinen QR-Code anzeigen
-            errorMessage = null // Auch keine Fehlermeldung
-        }
-    }
+fun QrCodeGeneratorScreen(modifier: Modifier = Modifier, qrViewModel: QrViewModel = viewModel()) {
+    val textToEncode by qrViewModel.inputText
+    val qrBitmap by qrViewModel.qrBitmap
+    val errorMessage by qrViewModel.errorMessage
+    val recentTexts by qrViewModel.sessionRecentTexts
 
     Column(
         modifier = modifier
@@ -78,24 +151,29 @@ fun QrCodeGeneratorScreen(modifier: Modifier = Modifier) {
         verticalArrangement = Arrangement.Center
     ) {
         Text(
-            text = "DPG-QR Generator", // Angepasster Titel
+            text = "DPG-QR Generator",
             style = MaterialTheme.typography.headlineMedium,
             modifier = Modifier.padding(bottom = 24.dp)
         )
 
         OutlinedTextField(
             value = textToEncode,
-            onValueChange = {
-                textToEncode = it
-                // Die Generierungslogik ist jetzt im LaunchedEffect
-            },
+            onValueChange = { qrViewModel.onInputTextChanged(it) },
             label = { Text("Text für QR-Code eingeben") },
             modifier = Modifier.fillMaxWidth(),
-            isError = errorMessage != null && textToEncode.isNotBlank() // Fehler nur anzeigen, wenn Text da ist
+            isError = errorMessage != null && textToEncode.isNotBlank()
         )
 
+        // Optional: Button to clear the input field
+        Button(
+            onClick = { qrViewModel.clearInputText() },
+            modifier = Modifier.padding(top = 8.dp)
+        ) {
+            Text("Eingabe löschen") // "Clear Input"
+        }
+
         errorMessage?.let {
-            if (textToEncode.isNotBlank()) { // Fehler nur anzeigen, wenn versucht wurde zu generieren
+            if (textToEncode.isNotBlank()) {
                 Text(
                     text = it,
                     color = MaterialTheme.colorScheme.error,
@@ -105,81 +183,66 @@ fun QrCodeGeneratorScreen(modifier: Modifier = Modifier) {
             }
         }
 
-        // Der Button wird nicht mehr benötigt für die Live-Generierung
-        // Spacer(modifier = Modifier.height(16.dp))
-        // Button( ... ) { ... }
-
-        Spacer(modifier = Modifier.height(32.dp))
+        Spacer(modifier = Modifier.height(24.dp)) // Adjusted spacer
 
         if (textToEncode.isNotBlank() && qrBitmap != null) {
             Image(
-                bitmap = qrBitmap!!.asImageBitmap(), // Sicherer Aufruf, da qrBitmap nicht null sein sollte, wenn textToEncode nicht leer ist und kein Fehler auftrat
+                bitmap = qrBitmap!!.asImageBitmap(),
                 contentDescription = "Generierter QR-Code",
                 modifier = Modifier
                     .size(256.dp)
-                    .padding(top = 16.dp)
             )
         } else if (textToEncode.isNotBlank() && errorMessage != null) {
-            // Optional: Platzhalter oder Fehlermeldung im Bildbereich anzeigen
             Box(
                 modifier = Modifier
-                    .size(256.dp)
-                    .padding(top = 16.dp),
+                    .size(256.dp),
                 contentAlignment = Alignment.Center
             ) {
                 Text("QR-Code konnte nicht generiert werden.")
             }
         } else {
-            // Platzhalter, wenn kein Text eingegeben wurde
             Box(
                 modifier = Modifier
-                    .size(256.dp)
-                    .padding(top = 16.dp),
+                    .size(256.dp),
                 contentAlignment = Alignment.Center
             ) {
-                Text("Hier QR-Code eingeben, um ihn anzuzeigen")
+                Text(if (textToEncode.isBlank()) "Text Eingeben um QR-Code Anzuzeigen" else "")
+            }
+        }
+
+        if (recentTexts.isNotEmpty()) {
+            Text(
+                text = "Kürzlich (diese Sitzung):",
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(top = 24.dp, bottom = 8.dp)
+            )
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 150.dp)
+            ) {
+                items(recentTexts) { text ->
+                    Text(
+                        text = text,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { qrViewModel.onRecentTextSelected(text) }
+                            .padding(vertical = 8.dp)
+                    )
+                    HorizontalDivider()
+                }
             }
         }
     }
 }
 
-fun generateQrCode(text: String, width: Int = 512, height: Int = 512): Bitmap? {
-    if (text.isBlank()) return null
-
-    val qrCodeWriter = QRCodeWriter()
-    // Optional: Füge Hints hinzu, z.B. für Fehlerkorrektur oder Zeichensatz
-    val hints = EnumMap<EncodeHintType, Any>(EncodeHintType::class.java)
-    hints[EncodeHintType.CHARACTER_SET] = "UTF-8"
-    hints[EncodeHintType.ERROR_CORRECTION] = ErrorCorrectionLevel.L // L = Low (ca. 7% Korrektur)
-
-    try {
-        val bitMatrix: BitMatrix = qrCodeWriter.encode(
-            text,
-            BarcodeFormat.QR_CODE,
-            width,
-            height,
-            hints // Füge die Hints hier hinzu
-        )
-        val bmp = createBitmap(bitMatrix.width, bitMatrix.height, Bitmap.Config.RGB_565)
-        for (x in 0 until bitMatrix.width) {
-            for (y in 0 until bitMatrix.height) {
-                bmp[x, y] = if (bitMatrix[x, y]) Color.BLACK else Color.WHITE
-            }
-        }
-        return bmp
-    } catch (e: Exception) {
-        // Wirf die Exception weiter oder handle sie spezifischer,
-        // damit sie in QrCodeGeneratorScreen gefangen werden kann.
-        throw e
-    }
-}
-
-@Preview(showBackground = true, widthDp = 320, heightDp = 640)
+// Add SuppressLint if you want to hide the "ViewModelConstructor" or similar warning for previews.
+// Replace "ComposeViewModelInjection" with the actual lint ID if different.
+@SuppressLint("ComposeViewModelInjection", "ViewModelConstructorInComposable") // THIS IS THE "FIX" FOR THE LINT WARNING
+@Preview(showBackground = true, widthDp = 320, heightDp = 720)
 @Composable
 fun DefaultPreview() {
-    QrTheme { // Passe dies an deinen Theme-Namen an
-        val qrScreen = Unit
-        qrScreen
+    QrTheme {
+        QrCodeGeneratorScreen(qrViewModel = QrViewModel())
     }
 }
-
