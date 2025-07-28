@@ -55,7 +55,7 @@ dependencies {
     implementation libs.ui.graphics
     implementation libs.ui.tooling.preview // Für @Preview
     implementation libs.material3 // Für Material Design 3 Komponenten
-    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.9.2")
+    implementation(libs.androidx.lifecycle.viewmodel.compose)
 
     // ZXing für QR-Code-Generierung
     // Überprüfe die neueste Version von ZXing Core: https://mvnrepository.com/artifact/com.google.zxing/core
